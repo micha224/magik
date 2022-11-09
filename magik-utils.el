@@ -285,5 +285,21 @@ when the subprocess being killed does not terminate quickly enough."
       (kill-process process)
     (delete-process process)))
 
+;;;temp
+(defun magik-beginning-of-defun (&optional arg)
+  (interactive "p")
+  (end-of-line)
+  (re-search-backward "_method")
+)
+
+(defun magik-end-of-defun (&optional arg)
+  (interactive "p")
+    (beginning-of-line)
+	(re-search-forward "_endmethod")
+	(next-line)
+  )
+
+(setq-local beginning-of-defun-function 'magik-beginning-of-defun)
+(setq-local end-of-defun-function 'magik-end-of-defun)
 (provide 'magik-utils)
 ;;; magik-utils.el ends here
