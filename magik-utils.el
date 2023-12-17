@@ -287,3 +287,93 @@ when the subprocess being killed does not terminate quickly enough."
 
 (provide 'magik-utils)
 ;;; magik-utils.el ends here
+
+
+
+
+
+
+
+
+(defun magik-forward-sexp (&optional arg)
+  (cond
+   ((looking-at ",\\s *") (goto-char (match-end 0)))
+   ((looking-at (rx (or "\"" "{" "[" "("))) (goto-char (scan-sexps (point) arg)))
+   ((looking-at (rx bol (or "_method" (group (or "" "_abstract" "_private" "_iter") space "_method"))))
+	(re-search-forward (rx (or "_endmethod\n\\$" "_endmethod"))))
+   ((looking-back "_endmethod")
+	(re-search-forward "_endmethod"))
+   ((or (looking-at (rx "$\n"))	(looking-back (rx "$\n")))
+	(goto-char (match-end 0))
+	(re-search-forward (rx "$\n")))
+   ((looking-at (rx bol "_pragma(" (zero-or-more not-newline) ")" eol))
+	(goto-char (match-end 0)))
+   ((looking-at (rx (one-or-more word) "(" (zero-or-more anychar) ")"))
+	(search-forward "(")
+	(backward-char)
+	(magik-forward-sexp 1)) ;; it will match on the (
+   ((looking-at "_proc") (search-forward "_endproc")) ;;too simple check for same level proc
+   ((looking-at "_for") (search-forward "_endloop"))
+   ((looking-at "_loop") (search-forward "_endloop"))
+   ((looking-at "_if") (search-forward "_endif"))
+   ((looking-at (rx (or "_elif" "_else")))
+	(goto-char (match-end 0))
+	(re-search-forward (rx (or "_elif" "_else" "_endif")))
+	(backward-word))
+   ((looking-back "_then")
+	(re-search-forward (rx (or "_elif" "_else" "_endif")))
+	(backward-word))
+   ((thing-at-point 'word) (skip-syntax-forward "w"))
+   )
+	)
+
+(defun ruby-forward-sexp (&optional arg)
+  "Move forward across one balanced expression (sexp).
+With ARG, do it many times.  Negative ARG means move backward."
+  (declare (obsolete forward-sexp "28.1"))
+  ;; TODO: Document body
+  (interactive "p")
+  (cond
+   (ruby-use-smie (forward-sexp arg))
+   ((and (numberp arg) (< arg 0))
+    (with-suppressed-warnings ((obsolete ruby-backward-sexp))
+      (ruby-backward-sexp (- arg))))
+   (t
+    (let ((i (or arg 1)))
+      (condition-case nil
+          (while (> i 0)
+            (skip-syntax-forward " ")
+	    (if (looking-at ",\\s *") (goto-char (match-end 0)))
+            (cond ((looking-at "\\?\\(\\\\[CM]-\\)*\\\\?\\S ")
+                   (goto-char (match-end 0)))
+                  ((progn
+                     (skip-chars-forward "-,.:;|&^~=!?+*")
+                     (looking-at "\\s("))
+                   (goto-char (scan-sexps (point) 1)))
+                  ((and (looking-at (concat "\\<\\(" ruby-block-beg-re
+                                            "\\)\\>"))
+                        (not (eq (char-before (point)) ?.))
+                        (not (eq (char-before (point)) ?:)))
+                   (ruby-end-of-block)
+                   (forward-word-strictly 1))
+                  ((looking-at "\\(\\$\\|@@?\\)?\\sw")
+                   (while (progn
+                            (while (progn (forward-word-strictly 1)
+                                          (looking-at "_")))
+                            (cond ((looking-at "::") (forward-char 2) t)
+                                  ((> (skip-chars-forward ".") 0))
+                                  ((looking-at "\\?\\|!\\(=[~=>]\\|[^~=]\\)")
+                                   (forward-char 1) nil)))))
+                  ((let (state expr)
+                     (while
+                         (progn
+                           (setq expr (or expr (ruby-expr-beg)
+                                          (looking-at "%\\sw?\\Sw\\|[\"'`/]")))
+                           (nth 1 (setq state (apply #'ruby-parse-partial
+                                                     nil state))))
+                       (setq expr t)
+                       (skip-chars-forward "<"))
+                     (not expr))))
+            (setq i (1- i)))
+        ((error) (forward-word-strictly 1)))
+      i))))
