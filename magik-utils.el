@@ -293,36 +293,60 @@ when the subprocess being killed does not terminate quickly enough."
 
 
 
-
+(defvar magik-pairs '("_proc" "_endproc"
+					  "_for" "_endloop"
+					  "_loop" "_endloop"
+					  "_if" "_endif"
+					  "_block" "_endblock"
+					  "$\n" "$\n"
+					  "_method" "_endmethod"
+					  "_iter _method" "_endmethod"
+					  "_abstract _method" "_endmethod"
+					  "_private _method" "_endmethod"
+					  "_endmethod" "_endmethod"))
 
 (defun magik-forward-sexp (&optional arg)
-  (cond
-   ((looking-at ",\\s *") (goto-char (match-end 0)))
-   ((looking-at (rx (or "\"" "{" "[" "("))) (goto-char (scan-sexps (point) arg)))
-   ((looking-at (rx bol (or "_method" (group (or "" "_abstract" "_private" "_iter") space "_method"))))
-	(re-search-forward (rx (or "_endmethod\n\\$" "_endmethod"))))
-   ((looking-back "_endmethod")
-	(re-search-forward "_endmethod"))
-   ((or (looking-at (rx "$\n"))	(looking-back (rx "$\n")))
-	(goto-char (match-end 0))
-	(re-search-forward (rx "$\n")))
-   ((looking-at (rx bol "_pragma(" (zero-or-more not-newline) ")" eol))
-	(goto-char (match-end 0)))
-   ((looking-at (rx (one-or-more word) "(" (zero-or-more anychar) ")"))
-	(search-forward "(")
-	(backward-char)
-	(magik-forward-sexp 1)) ;; it will match on the (
-   ((looking-at "_proc") (search-forward "_endproc")) ;;too simple check for same level proc
-   ((looking-at "_for") (search-forward "_endloop"))
-   ((looking-at "_loop") (search-forward "_endloop"))
-   ((looking-at "_if") (search-forward "_endif"))
-   ((looking-at (rx (or "_elif" "_else")))
-	(goto-char (match-end 0))
-	(re-search-forward (rx (or "_elif" "_else" "_endif")))
-	(backward-word))
-   ((looking-back "_then")
-	(re-search-forward (rx (or "_elif" "_else" "_endif")))
-	(backward-word))
-   ((thing-at-point 'word) (skip-syntax-forward "w"))
-   )
-	)
+  (rx-let ((or-values (func pairs) (eval (apply 'list 'or (func pairs)))))
+	(cond
+	 ((and (numberp arg) (zerop arg)) nil)
+	 ((and (numberp arg) (< arg 0)) (magik-backward-sexp arg))
+	 (t (cond
+		 ((looking-at ",\\s *") (goto-char (match-end 0)))
+		 ((looking-at (rx (or "\"" "{" "[" "("))) (goto-char (scan-sexps (point) 1)))
+		 ((looking-at (rx (one-or-more word) "(" (zero-or-more anychar) ")"))
+		  (search-forward "(")
+		  (backward-char)
+		  (magik-forward-sexp 1)) ;; it will match on the (
+		 ((looking-at (rx (or-values map-keys magik-pairs)))
+		  (goto-char (match-end 0))
+		  (re-search-forward (plist-get magik-pairs (match-string 0) 'equal)))
+		 ((looking-back (rx (or-values map-values magik-pairs)) nil)
+		  (goto-char (match-end 0))
+		  (re-search-forward (match-string 0)))
+		 ;; inside if statement
+		 ((looking-at (rx (or "_elif" "_else")))
+		  (goto-char (match-end 0))
+		  (re-search-forward (rx (or "_elif" "_else" "_endif")))
+		  (backward-word))
+		 ((looking-back "_then")
+		  (re-search-forward (rx (or "_elif" "_else" "_endif")))
+		  (backward-word))
+		 ;; default 
+		 ((thing-at-point 'word) (skip-syntax-forward "w")))
+		(magik-forward-sexp (1- arg))))))
+
+(defun magik-backward-sexp (&optional arg)
+  (rx-let ((or-values (func pairs) (eval (apply 'list 'or (func pairs)))))
+	(if (and (numberp arg) (> arg -1)) (magik-forward-sexp arg)
+	 (cond
+		((looking-back ",\\s *") (goto-char (match-beginning 0)))
+		((looking-at (rx (or "\"" "}" "]" ")"))) (goto-char (scan-sexps (point) -1)))
+		((looking-at (rx (or-values map-keys magik-pairs)))
+		 (re-search-backward (match-string 0)))
+		((looking-back (rx (or-values map-values magik-pairs)) nil)
+		 (goto-char (match-beginning 0))
+		 (re-search-backward (match-string 0))) ;;need to match keys
+		;; inside if statement
+		;; default 
+		((thing-at-point 'word) (skip-syntax-backward "w")))
+	 (magik-backward-sexp (1+ arg)))))
