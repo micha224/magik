@@ -299,11 +299,12 @@ when the subprocess being killed does not terminate quickly enough."
 					  "_if" "_endif"
 					  "_block" "_endblock"
 					  "$\n" "$\n"
-					  "_method" "_endmethod"
 					  "_iter _method" "_endmethod"
 					  "_abstract _method" "_endmethod"
 					  "_private _method" "_endmethod"
-					  "_endmethod" "_endmethod"))
+					  "_method" "_endmethod"
+					  ;; "_endmethod" "_endmethod"
+					  ))
 
 (defun magik-forward-sexp (&optional arg)
   (rx-let ((or-values (func pairs) (eval (apply 'list 'or (func pairs)))))
@@ -340,13 +341,12 @@ when the subprocess being killed does not terminate quickly enough."
 	(if (and (numberp arg) (> arg -1)) (magik-forward-sexp arg)
 	 (cond
 		((looking-back ",\\s *") (goto-char (match-beginning 0)))
-		((looking-at (rx (or "\"" "}" "]" ")"))) (goto-char (scan-sexps (point) -1)))
+		((looking-back (rx (or "\"" "}" "]" ")"))) (goto-char (scan-sexps (point) -1)))
 		((looking-at (rx (or-values map-keys magik-pairs)))
 		 (re-search-backward (match-string 0)))
 		((looking-back (rx (or-values map-values magik-pairs)) nil)
-		 (goto-char (match-beginning 0))
-		 (re-search-backward (match-string 0))) ;;need to match keys
-		;; inside if statement
-		;; default 
+		 (goto-char (match-beginning 0))		 
+		 (re-search-backward (plist-get (reverse magik-pairs)
+										(match-string 0) 'equal)))
 		((thing-at-point 'word) (skip-syntax-backward "w")))
 	 (magik-backward-sexp (1+ arg)))))
